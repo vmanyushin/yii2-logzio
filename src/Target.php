@@ -11,25 +11,27 @@ namespace vman\logzio;
 use Yii;
 use yii\base\InvalidConfigException;
 use yii\helpers\VarDumper;
-use LogzIO\LogzIOGuzzle;
+use LogzIO\Transport\LogzIOGuzzle;
 use LogzIO\LogzIOElasticaClient;
 
-class FileTarget extends Target
+class Target extends \yii\log\Target
 {
     private $client;
 
     /**
+     * API key from https://app.logz.io/#/dashboard/settings/general
      * @var string
      */
     public $apiKey = '';
 
     /**
+     * type of message
      * @var string
      */
     public $type = 'record';
 
     /**
-     *
+     * constructor
      */
     public function init()
     {
@@ -40,45 +42,48 @@ class FileTarget extends Target
         $config['transport']->setToken($this->apiKey);
         $config['transport']->setType($this->type);
 
-        $client = new LogzIOElasticaClient($config);
+        $this->client = new LogzIOElasticaClient($config);
     }
 
     /**
-     *
+     * send logs to logz.ioo
      */
     public function export()
     {
         $documents = [];
 
         foreach ($this->messages as $id => $message) {
-            $documents[] = new \Elastica\Document($id, $this->formatMessage($message));
+            $formatMessage = $this->formatMessage($message);
+            if ($formatMessage === null) {
+                continue;
+            }
+            $documents[] = new \Elastica\Document($id, $formatMessage);
         }
 
-        $resp = $this->client->addDocuments($documents);
+        $this->client->addDocuments($documents);
     }
 
     /**
+     * return null if string is empty
      * @param $message
-     * @return array
+     * @return array|null
      */
-    private function formatMessage($message)
+    public function formatMessage($message)
     {
         list($text, $level, $category, $timestamp) = $message;
 
         if (!is_string($text)) {
-            // exceptions may not be serializable if in the call stack somewhere is a Closure
             if ($text instanceof \Throwable || $text instanceof \Exception) {
                 $text = (string)$text;
             } else {
-                $text = VarDumper::export($text);
+                return null;
             }
         }
 
         return [
-            'message'   => $text,
-            'level'     => $level,
-            'category'  => $category,
-            'timestamp' => $timestamp,
+            'message'  => $text,
+            'level'    => $level,
+            'category' => $category,
         ];
     }
 }
